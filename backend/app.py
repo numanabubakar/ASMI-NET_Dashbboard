@@ -102,9 +102,21 @@ def run_inference(image_bytes: bytes) -> PredictionResponse:
         # 4. Generate explanations
         explain_maps = generate_all_explanations(model, preprocessor, image_tensor, image_bytes)
         
+        sorted_preds = sorted(all_predictions, key=lambda x: x.confidence, reverse=True)
+        
+        # LOGGING: Print detailed output to console/logs
+        print(f"\n--- AMSI-Net Inference Results ---")
+        print(f"Predicted Labels: {predicted_labels}")
+        print(f"Uncertainty Score: {uncertainty:.6f}")
+        print(f"Inference Latency: {inference_time:.2f}ms")
+        print(f"Top 5 Predictions:")
+        for p in sorted_preds[:5]:
+            print(f"  - {p.class_label}: {p.confidence:.4f}")
+        print(f"----------------------------------\n")
+        
         return PredictionResponse(
             predicted_labels=predicted_labels,
-            all_predictions=sorted(all_predictions, key=lambda x: x.confidence, reverse=True),
+            all_predictions=sorted_preds,
             explainability_maps=explain_maps,
             uncertainty=uncertainty,
             inference_time_ms=inference_time,
