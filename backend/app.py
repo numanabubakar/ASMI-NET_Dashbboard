@@ -2,11 +2,12 @@
 
 import torch
 import time
+import base64
+import io
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any
-import io
 
 from model_loader import get_model_loader
 from preprocessing import get_preprocessor
@@ -28,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Response models
+# Request/Response models
 class ClassPrediction(BaseModel):
     class_index: int
     class_label: str
@@ -42,45 +43,16 @@ class PredictionResponse(BaseModel):
     inference_time_ms: float
     image_info: Dict[str, Any]
 
+class MobileRequest(BaseModel):
+    image: str  # Base64 string
+
 # Constants
 VALID_IMAGE_FORMATS = {"image/jpeg", "image/png", "image/jpg"}
 MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB
 CONFIDENCE_THRESHOLD = 0.5
 
-def validate_image(file: UploadFile) -> bytes:
-    """Validate and read image file."""
-    if file.content_type not in VALID_IMAGE_FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid image format. Supported: JPEG, PNG. Got: {file.content_type}"
-        )
-    
-    content = file.file.read()
-    if len(content) > MAX_IMAGE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Image too large. Max size: {MAX_IMAGE_SIZE / 1024 / 1024}MB"
-        )
-    return content
-
-@app.get("/")
-async def root():
-    return {"status": "ok", "message": "AMSI-Net API is running"}
-
-@app.get("/health")
-async def health():
-    loader = get_model_loader()
-    return {
-        "status": "healthy",
-        "device": str(loader.get_device()),
-        "model_loaded": loader.model is not None
-    }
-
-@app.post("/predict", response_model=PredictionResponse)
-async def predict(file: UploadFile = File(...)):
-    """Predict LULC classes for uploaded image."""
-    image_bytes = validate_image(file)
-    
+def run_inference(image_bytes: bytes) -> PredictionResponse:
+    """Core inference logic reused across endpoints."""
     try:
         preprocessor = get_preprocessor()
         loader = get_model_loader()
@@ -138,11 +110,59 @@ async def predict(file: UploadFile = File(...)):
             inference_time_ms=inference_time,
             image_info=image_info
         )
-        
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+def validate_image(file: UploadFile) -> bytes:
+    """Validate and read image file."""
+    if file.content_type not in VALID_IMAGE_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid image format. Supported: JPEG, PNG. Got: {file.content_type}"
+        )
+    
+    content = file.file.read()
+    if len(content) > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image too large. Max size: {MAX_IMAGE_SIZE / 1024 / 1024}MB"
+        )
+    return content
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "AMSI-Net API is running"}
+
+@app.get("/health")
+async def health():
+    loader = get_model_loader()
+    return {
+        "status": "healthy",
+        "device": str(loader.get_device()),
+        "model_loaded": loader.model is not None
+    }
+
+@app.post("/predict", response_model=PredictionResponse)
+async def predict(file: UploadFile = File(...)):
+    """Standard multipart prediction (Web)."""
+    image_bytes = validate_image(file)
+    return run_inference(image_bytes)
+
+@app.post("/predict_mobile", response_model=PredictionResponse)
+async def predict_mobile(request: MobileRequest):
+    """Base64 prediction (Mobile)."""
+    try:
+        # Strip potential base64 prefix (e.g. "data:image/jpeg;base64,")
+        base64_str = request.image
+        if "," in base64_str:
+            base64_str = base64_str.split(",")[1]
+            
+        image_bytes = base64.b64decode(base64_str)
+        return run_inference(image_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid base64 image data: {str(e)}")
 
 @app.get("/info")
 async def info():
