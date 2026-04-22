@@ -6,7 +6,7 @@ import base64
 import io
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict, Any
 
 from model_loader import get_model_loader
@@ -44,16 +44,17 @@ class PredictionResponse(BaseModel):
     image_info: Dict[str, Any]
 
 class MobileRequest(BaseModel):
-    image: str
+    image: str = Field(..., alias="image_b64")
 
     # Allow aliases in case the mobile app uses different names
-    class Config:
-        populate_by_name = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "image": "base64_string_here"
             }
         }
+    )
 
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
