@@ -44,7 +44,33 @@ class PredictionResponse(BaseModel):
     image_info: Dict[str, Any]
 
 class MobileRequest(BaseModel):
-    image: str  # Base64 string
+    image: str
+
+    # Allow aliases in case the mobile app uses different names
+    class Config:
+        populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "image": "base64_string_here"
+            }
+        }
+
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    print(f"--- 422 Validation Error ---")
+    print(f"Method: {request.method} URL: {request.url}")
+    print(f"Body: {body.decode()[:500]}...") # Print first 500 chars
+    print(f"Errors: {exc.errors()}")
+    print(f"---------------------------")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body_received": body.decode()[:100]},
+    )
 
 # Constants
 VALID_IMAGE_FORMATS = {"image/jpeg", "image/png", "image/jpg"}
