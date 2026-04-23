@@ -27,7 +27,7 @@ npm run dev
 Access the dashboard at `http://localhost:3000`.
 
 ## 🛠 Tech Stack
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React
 - **Utilities**: clsx, tailwind-merge
